@@ -24,7 +24,8 @@ public class PythonRuntimeTask : IDisposable
 
   private void Start()
   {
-    _pythonThread = new Thread(() => RunPythonCode(_cts.Token));
+    // Background: a stuck Python thread must never keep the process alive on shutdown.
+    _pythonThread = new Thread(() => RunPythonCode(_cts.Token)) { IsBackground = true, Name = "python-worker" };
     _pythonThread?.Start();
   }
 
@@ -86,9 +87,9 @@ public class PythonRuntimeTask : IDisposable
     }
     catch (OperationCanceledException)
     {
+      // Deliberately no PythonEngine.Shutdown(): the process is exiting anyway, and finalizing
+      // Python on the way out core-dumped cryze_api on `docker restart` (2026-07-18, 2026-10-15).
       _logger.LogCritical("Python thread cancelled");
-      PythonEngine.Shutdown();
-      _logger.LogCritical("Python engine shutdown");
     }
   }
 
@@ -201,7 +202,9 @@ public class PythonRuntimeTask : IDisposable
     }
 
     _logger.LogInformation("Rebinding PosixSignalHandler");
-    SetPosixSignalHandlerMethodInfo.Invoke(null, [HandlerRoutine]);
+    // Was [HandlerRoutine], the Windows-only field, which is always IntPtr.Zero on Linux: after the first
+    // Python task .NET's signal handler became a null pointer, so the next SIGTERM crashed the process.
+    SetPosixSignalHandlerMethodInfo.Invoke(null, [NixPosixSignalHandler]);
     _logger.LogInformation("Rebound PosixSignalHandler");
   }
 
@@ -220,7 +223,11 @@ public class PythonRuntimeTask : IDisposable
     _cts.Cancel();
     _taskQueue.CompleteAdding();
     _logger.LogCritical("Waiting for python worker thread to shutdown");
-    _pythonThread?.Join();
+    if (_pythonThread?.Join(TimeSpan.FromSeconds(5)) == false)
+    {
+      _logger.LogCritical("Python worker thread did not stop within 5s; exiting without it");
+      return;
+    }
     _logger.LogCritical("Python worker thread shutdown complete");
   }
 

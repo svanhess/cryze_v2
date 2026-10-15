@@ -17,6 +17,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 
 # Install Python 3.11
 RUN apt-get update -y && apt-get install -y python3.11 python3-pip
+# Fixed, arch-independent libpython path so the app never has to probe with ldconfig (see PythonServices.cs)
+RUN ln -sf "$(ls /lib/*-linux-gnu/libpython3.11.so* | head -1)" /usr/local/lib/libpython3.11.so
+ENV PYTHONNET_PYDLL=/usr/local/lib/libpython3.11.so
 # make a directory for the database file
 RUN mkdir /data
 # Set the working directory

@@ -99,6 +99,15 @@ public partial class PythonServices
     }
     else if (OperatingSystem.IsLinux())
     {
+      // Prefer an explicit path (set in the Dockerfile). This skips spawning ldconfig on the Python thread,
+      // which is where cryze_api has been seen hanging forever at startup (never logs "Found libpython").
+      var explicitLib = Environment.GetEnvironmentVariable("PYTHONNET_PYDLL");
+      if (File.Exists(explicitLib))
+      {
+        _logger.LogInformation($"Found libpython3.*.so at {explicitLib} (PYTHONNET_PYDLL)");
+        Runtime.PythonDLL = explicitLib;
+        return;
+      }
       var pythonLib = string.Empty;
       // to be more universal, use the path. /usr/lib is a common location, but not guaranteed
       // to be the only location. other locations could be /usr/local/lib, /usr/lib64, etc.

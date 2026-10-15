@@ -48,7 +48,13 @@ namespace Cryze.API
 
       // Run the startup activities for the camera store
       var cameraStoreActivities = app.ApplicationServices.GetRequiredService<CameraStoreActivities>();
-      cameraStoreActivities.RunStartupActivitiesAsync().Wait();
+      // Fail loudly instead of hanging forever with :8080 never bound (seen 2026-07-19/07-23/10-15).
+      // Throwing aborts host startup, so the container exits and its restart policy takes over.
+      var timeout = TimeSpan.FromSeconds(Configuration.GetValue("StoreConfiguration:StartupTimeoutSeconds", 120));
+      if (!cameraStoreActivities.RunStartupActivitiesAsync().Wait(timeout))
+      {
+        throw new TimeoutException($"Startup activities did not finish within {timeout.TotalSeconds}s (Python worker stuck?)");
+      }
    }
   }
 }
