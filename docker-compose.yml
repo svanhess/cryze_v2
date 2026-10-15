@@ -52,6 +52,8 @@ services:
     env_file:
       - .env
     # The app allows itself 15s to shut down (Program.cs); Docker's default SIGKILL is 10s.
+    ulimits:
+      core: 0   # a transient Wyze 429 at startup aborts .NET; skip the ~250 MB core
     stop_grace_period: 20s
     logging:
       options:
